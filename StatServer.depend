@@ -1,0 +1,22 @@
+# depslib dependency file v1.0
+1541956829 source:/home/vdv/dev/StatServer/main.cpp
+	<algorithm>
+	<array>
+	<cctype>
+	<iostream>
+	<map>
+	<mutex>
+	<sstream>
+	<stdexcept>
+	<thread>
+	<errno.h>
+	<fcntl.h>
+	<signal.h>
+	<string.h>
+	<unistd.h>
+	<netinet/in.h>
+	<sys/poll.h>
+	<sys/socket.h>
+	<sys/stat.h>
+	<sys/types.h>
+
