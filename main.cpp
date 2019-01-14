@@ -27,6 +27,138 @@ using namespace std;
 
 constexpr uint32_t microsecondsInSecond = 1000000;
 
+
+class EventStatisticV2
+{
+    uint32_t _minimum;
+    uint32_t _maximum;
+    uint32_t _median;
+    uint32_t _90_0_percentel;
+    uint32_t _99_0_percentel;
+    uint32_t _99_9_percentel;
+
+    uint32_t _total_counter;
+
+    array<uint32_t, microsecondsInSecond> _histogram;
+public:
+    EventStatisticV2()
+    {
+        Reset();
+    }
+
+    void Reset()
+    {
+        _minimum = 0;
+        _maximum = 0;
+        _median = 0;
+        _90_0_percentel = 0;
+        _99_0_percentel = 0;
+        _99_9_percentel = 0;
+        _total_counter = 0;
+        fill(_histogram.begin(), _histogram.end(), 0);
+    }
+
+    void AddData(uint32_t delay)
+    {
+        delay %= microsecondsInSecond;
+        _histogram[delay]++;
+        _total_counter++;
+
+        if (delay < _minimum || _minimum == 0)
+            _minimum = delay;
+
+        if (delay > _maximum)
+            _maximum = delay;
+    }
+
+    void Calc()
+    {
+        float local_median_counter = 0;
+        float local_90_0_percentel_counter = 0;
+        float local_99_0_percentel_counter = 0;
+        float local_99_9_percentel_counter = 0;
+
+        for (uint32_t delay = 0; delay < microsecondsInSecond; delay++)
+        {
+            uint32_t count = _histogram[delay];
+            if (count == 0)
+                continue;
+
+            if (local_median_counter / _total_counter < 0.500)
+            {
+                _median = delay;
+                local_median_counter += count;
+            }
+
+            if (local_90_0_percentel_counter / _total_counter < 0.900)
+            {
+                _90_0_percentel = delay;
+                local_90_0_percentel_counter += count;
+            }
+
+            if (local_99_0_percentel_counter / _total_counter < 0.990)
+            {
+                _99_0_percentel = delay;
+                local_99_0_percentel_counter += count;
+            }
+
+            if (local_99_9_percentel_counter / _total_counter < 0.999)
+            {
+                _99_9_percentel = delay;
+                local_99_9_percentel_counter += count;
+            }
+        }
+    }
+
+    uint32_t GetMinimun() const { return _minimum; }
+    uint32_t GetMedian() const { return _median; }
+    uint32_t Get122us90Percentel() const { return _90_0_percentel; }
+    uint32_t Get140us99Percentel() const { return _99_0_percentel; }
+    uint32_t Get145us999Percentel() const { return _99_9_percentel; }
+
+    string GetReport()
+    {
+        stringstream result;
+        result << "min=" << GetMinimun()
+               << " 50%=" << GetMedian()
+               << " 90%=" << Get122us90Percentel()
+               << " 99%=" << Get140us99Percentel()
+               << " 99.9%=" << Get145us999Percentel();
+
+        return result.str();
+    }
+
+    string GetFullReport()
+    {
+        uint32_t step = 5;
+        uint32_t range_min = _minimum - _minimum % step;
+        uint32_t range_max = _maximum - _maximum % step + step;
+
+        stringstream buf;
+        buf << "ExecTime\tTransNo\tWeight,%\tPercent" << endl;
+        uint32_t trans_no_below_exec_time = 0;
+        for (uint32_t exec_time = range_min; exec_time < range_max; exec_time += step)
+        {
+            uint32_t trans_no = 0;
+            for (uint32_t i = exec_time; i < exec_time + step; i++)
+            {
+                trans_no += _histogram[i];
+            }
+
+            if (trans_no == 0)
+                continue;
+
+            float weight = (float)(trans_no) / _total_counter * 100.0;
+            float percent = (float)(trans_no_below_exec_time) / _total_counter * 100.0;
+            trans_no_below_exec_time += trans_no;
+
+            buf << exec_time << "\t" << trans_no << "\t" << weight << "\t" << percent << endl;
+        }
+
+        return buf.str();
+    }
+};
+
 class EventStatistic
 {
     uint32_t _minimum;
@@ -98,7 +230,7 @@ public:
             if (count == 0)
                 continue;
 
-            if (local_median_counter / _total_counter < 50.0)
+            if (local_median_counter / _total_counter < 0.500)
             {
                 _median = delay;
                 local_median_counter += count;
@@ -106,7 +238,7 @@ public:
 
             if (delay < 122)
             {
-                if (local_122us_counter / _below_122us_counter < 90.0)
+                if (local_122us_counter / _below_122us_counter < 0.900)
                 {
                     _122us_90_0_percentel = delay;
                     local_122us_counter += count;
@@ -115,7 +247,7 @@ public:
 
             if (delay < 140)
             {
-                if (local_140us_counter / _below_140us_counter < 99.0)
+                if (local_140us_counter / _below_140us_counter < 0.990)
                 {
                     _140us_99_0_percentel = delay;
                     local_140us_counter += count;
@@ -124,7 +256,7 @@ public:
 
             if (delay < 145)
             {
-                if (local_145us_counter / _below_145us_counter < 99.9)
+                if (local_145us_counter / _below_145us_counter < 0.999)
                 {
                     _145us_99_9_percentel = delay;
                     local_145us_counter += count;
@@ -185,14 +317,14 @@ public:
 class Statistic
 {
     using Event = string;
-    map<Event, EventStatistic> _events;
+    map<Event, EventStatisticV2> _events;
     recursive_mutex _mutex;
 public:
     void AddEvent(Event event)
     {
         lock_guard<recursive_mutex> guard(_mutex);
         if (_events.count(event) == 0)
-            _events.insert(make_pair(event, EventStatistic()));
+            _events.insert(make_pair(event, EventStatisticV2()));
     }
 
     void AddEventData(Event event, uint32_t delay)
